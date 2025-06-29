@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @State private var receipts: [Receipt] = []
+    @StateObject private var coreDataManager = CoreDataManager.shared
     @State private var showingExportSheet = false
     @State private var exportURL: URL?
     
     var body: some View {
         NavigationView {
             List {
-                ForEach(receipts) { receipt in
+                ForEach(coreDataManager.receipts) { receipt in
                     NavigationLink(destination: ReceiptDetailView(receipt: receipt)) {
                         ReceiptRowView(receipt: receipt)
                     }
@@ -20,7 +20,7 @@ struct HistoryView: View {
                     Button("Export CSV") {
                         exportToCSV()
                     }
-                    .disabled(receipts.isEmpty)
+                    .disabled(coreDataManager.receipts.isEmpty)
                 }
             }
             .refreshable {
@@ -38,46 +38,14 @@ struct HistoryView: View {
     }
     
     private func loadReceipts() {
-        receipts = CoreDataManager.shared.fetchReceipts()
+        coreDataManager.fetchReceipts()
     }
     
     private func exportToCSV() {
-        if let url = CSVExporter.shared.exportReceipts(receipts) {
+        if let url = CSVExporter.shared.exportReceipts(coreDataManager.receipts) {
             exportURL = url
             showingExportSheet = true
         }
-    }
-}
-
-struct ReceiptRowView: View {
-    let receipt: Receipt
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(receipt.storeName)
-                    .font(.headline)
-                
-                Spacer()
-                
-                Text("$\(receipt.totalAmount, specifier: "%.2f")")
-                    .font(.headline)
-                    .foregroundColor(.green)
-            }
-            
-            HStack {
-                Text(receipt.date, style: .date)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                Text("\(receipt.lineItems.count) items")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 

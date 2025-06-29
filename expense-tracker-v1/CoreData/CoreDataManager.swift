@@ -4,6 +4,8 @@ import Foundation
 class CoreDataManager: ObservableObject {
     static let shared = CoreDataManager()
     
+    @Published var receipts: [Receipt] = []
+    
     lazy var container: NSPersistentContainer = {
         let container = NSPersistentContainer(name: "DataModel")
         container.loadPersistentStores { _, error in
@@ -14,7 +16,9 @@ class CoreDataManager: ObservableObject {
         return container
     }()
     
-    private init() {}
+    private init() {
+        fetchReceipts()
+    }
     
     func save() {
         let context = container.viewContext
@@ -22,6 +26,7 @@ class CoreDataManager: ObservableObject {
         if context.hasChanges {
             do {
                 try context.save()
+                fetchReceipts() // Refresh the published receipts array
             } catch {
                 print("Save error: \(error)")
             }
@@ -50,13 +55,66 @@ class CoreDataManager: ObservableObject {
         save()
     }
     
-    func fetchReceipts() -> [Receipt] {
+    func updateReceipt(_ receipt: Receipt) {
+        let context = container.viewContext
+        let request: NSFetchRequest<ReceiptEntity> = ReceiptEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", receipt.id.uuidString)
+        
+        do {
+            let results = try context.fetch(request)
+            if let receiptEntity = results.first {
+                // Update receipt properties
+                receiptEntity.storeName = receipt.storeName
+                receiptEntity.date = receipt.date
+                receiptEntity.totalAmount = receipt.totalAmount
+                
+                // Delete existing line items
+                if let existingLineItems = receiptEntity.lineItems as? Set<LineItemEntity> {
+                    for lineItem in existingLineItems {
+                        context.delete(lineItem)
+                    }
+                }
+                
+                // Create new line items
+                for lineItem in receipt.lineItems {
+                    let lineItemEntity = LineItemEntity(context: context)
+                    lineItemEntity.id = lineItem.id
+                    lineItemEntity.name = lineItem.name
+                    lineItemEntity.quantity = Int32(lineItem.quantity)
+                    lineItemEntity.unitPrice = lineItem.unitPrice
+                    lineItemEntity.receipt = receiptEntity
+                }
+                
+                save()
+            }
+        } catch {
+            print("Update error: \(error)")
+        }
+    }
+    
+    func deleteReceipt(_ receipt: Receipt) {
+        let context = container.viewContext
+        let request: NSFetchRequest<ReceiptEntity> = ReceiptEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", receipt.id.uuidString)
+        
+        do {
+            let results = try context.fetch(request)
+            if let receiptEntity = results.first {
+                context.delete(receiptEntity)
+                save()
+            }
+        } catch {
+            print("Delete error: \(error)")
+        }
+    }
+    
+    func fetchReceipts() {
         let request: NSFetchRequest<ReceiptEntity> = ReceiptEntity.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \ReceiptEntity.date, ascending: false)]
         
         do {
             let receiptEntities = try container.viewContext.fetch(request)
-            return receiptEntities.compactMap { entity in
+            self.receipts = receiptEntities.compactMap { entity in
                 guard let id = entity.id,
                       let storeName = entity.storeName,
                       let date = entity.date else { return nil }
@@ -89,7 +147,7 @@ class CoreDataManager: ObservableObject {
             }
         } catch {
             print("Fetch error: \(error)")
-            return []
+            self.receipts = []
         }
     }
 }

@@ -2,9 +2,11 @@ import SwiftUI
 import AVFoundation
 
 struct CameraView: UIViewControllerRepresentable {
+    let onImageCaptured: (UIImage) -> Void
     @State private var showingVerification = false
     @State private var scannedReceipt: Receipt?
     @State private var isProcessing = false
+    @Environment(\.presentationMode) var presentationMode
     
     func makeUIViewController(context: Context) -> CameraViewController {
         let controller = CameraViewController()
@@ -35,6 +37,7 @@ struct CameraView: UIViewControllerRepresentable {
                     parent.scannedReceipt = receipt
                     parent.isProcessing = false
                     parent.showingVerification = true
+                    parent.onImageCaptured(image)
                 }
             }
         }
@@ -42,8 +45,20 @@ struct CameraView: UIViewControllerRepresentable {
     
     var body: some View {
         ZStack {
-            CameraViewControllerWrapper()
+            CameraViewControllerWrapper(delegate: makeCoordinator())
                 .edgesIgnoringSafeArea(.all)
+            
+            VStack {
+                HStack {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .foregroundColor(.white)
+                    .padding()
+                    Spacer()
+                }
+                Spacer()
+            }
             
             if isProcessing {
                 Color.black.opacity(0.7)
@@ -66,6 +81,7 @@ struct CameraView: UIViewControllerRepresentable {
                 VerificationView(receipt: receipt) {
                     showingVerification = false
                     scannedReceipt = nil
+                    presentationMode.wrappedValue.dismiss()
                 }
             }
         }
@@ -73,8 +89,12 @@ struct CameraView: UIViewControllerRepresentable {
 }
 
 struct CameraViewControllerWrapper: UIViewControllerRepresentable {
+    let delegate: CameraView.Coordinator
+    
     func makeUIViewController(context: Context) -> CameraViewController {
-        return CameraViewController()
+        let controller = CameraViewController()
+        controller.delegate = delegate
+        return controller
     }
     
     func updateUIViewController(_ uiViewController: CameraViewController, context: Context) {}
@@ -89,11 +109,37 @@ class CameraViewController: UIViewController {
     private var captureSession: AVCaptureSession!
     private var previewLayer: AVCaptureVideoPreviewLayer!
     private var photoOutput: AVCapturePhotoOutput!
+    private var captureButton: UIButton!
     
     override func viewDidLoad() {
         super.viewDidLoad()
         setupCamera()
         setupUI()
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.layer.bounds
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        if captureSession?.isRunning == false {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.captureSession.startRunning()
+            }
+        }
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        if captureSession?.isRunning == true {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.captureSession.stopRunning()
+            }
+        }
     }
     
     private func setupCamera() {
@@ -115,12 +161,7 @@ class CameraViewController: UIViewController {
                 
                 previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
                 previewLayer.videoGravity = .resizeAspectFill
-                previewLayer.frame = view.layer.bounds
                 view.layer.addSublayer(previewLayer)
-                
-                DispatchQueue.global(qos: .background).async {
-                    self.captureSession.startRunning()
-                }
             }
         } catch {
             print("Error setting up camera: \(error)")
@@ -128,12 +169,19 @@ class CameraViewController: UIViewController {
     }
     
     private func setupUI() {
-        // Capture button
-        let captureButton = UIButton(type: .system)
-        captureButton.setTitle("📷", for: .normal)
-        captureButton.titleLabel?.font = UIFont.systemFont(ofSize: 60)
+        // Capture button with better styling and interaction
+        captureButton = UIButton(type: .custom)
+        captureButton.backgroundColor = .white
+        captureButton.layer.cornerRadius = 35
+        captureButton.layer.borderWidth = 4
+        captureButton.layer.borderColor = UIColor.systemBlue.cgColor
         captureButton.addTarget(self, action: #selector(capturePhoto), for: .touchUpInside)
         captureButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add haptic feedback and visual feedback
+        captureButton.addTarget(self, action: #selector(buttonTouchDown), for: .touchDown)
+        captureButton.addTarget(self, action: #selector(buttonTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
         view.addSubview(captureButton)
         
         // Instructions label
@@ -143,35 +191,106 @@ class CameraViewController: UIViewController {
         instructionsLabel.textAlignment = .center
         instructionsLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
         instructionsLabel.layer.cornerRadius = 8
+        instructionsLabel.layer.masksToBounds = true
+        instructionsLabel.numberOfLines = 0
+        instructionsLabel.font = UIFont.systemFont(ofSize: 16)
         instructionsLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(instructionsLabel)
         
         NSLayoutConstraint.activate([
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
+            captureButton.widthAnchor.constraint(equalToConstant: 70),
+            captureButton.heightAnchor.constraint(equalToConstant: 70),
             
             instructionsLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             instructionsLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             instructionsLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
-            instructionsLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20)
+            instructionsLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+            instructionsLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
+        
+        // Add padding to the label
+        instructionsLabel.layoutMargins = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+    }
+    
+    @objc private func buttonTouchDown() {
+        UIView.animate(withDuration: 0.1) {
+            self.captureButton.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        }
+        
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
+    @objc private func buttonTouchUp() {
+        UIView.animate(withDuration: 0.1) {
+            self.captureButton.transform = CGAffineTransform.identity
+        }
     }
     
     @objc private func capturePhoto() {
-        let settings = AVCapturePhotoSettings()
+        print("Capture photo called") // Debug log
+        
+        guard let photoOutput = photoOutput else {
+            print("Photo output not available")
+            return
+        }
+        
+        let settings: AVCapturePhotoSettings
+        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
+        } else {
+            settings = AVCapturePhotoSettings()
+        }
+        
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 }
 
 extension CameraViewController: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let imageData = photo.fileDataRepresentation(),
-              let image = UIImage(data: imageData) else { return }
+        print("Photo captured") // Debug log
         
-        delegate?.didCaptureImage(image)
+        if let error = error {
+            print("Error capturing photo: \(error)")
+            return
+        }
+        
+        guard let imageData = photo.fileDataRepresentation(),
+              let image = UIImage(data: imageData) else {
+            print("Could not create image from photo data")
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.delegate?.didCaptureImage(image)
+        }
+    }
+    
+    func photoOutput(_ output: AVCapturePhotoOutput, willBeginCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        print("Will begin capture") // Debug log
+    }
+    
+    func photoOutput(_ output: AVCapturePhotoOutput, didCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        print("Did capture photo") // Debug log
+        
+        // Flash effect
+        DispatchQueue.main.async {
+            let flashView = UIView(frame: self.view.bounds)
+            flashView.backgroundColor = .white
+            self.view.addSubview(flashView)
+            
+            UIView.animate(withDuration: 0.2, animations: {
+                flashView.alpha = 0
+            }) { _ in
+                flashView.removeFromSuperview()
+            }
+        }
     }
 }
 
 #Preview {
-    CameraView()
+    CameraView { _ in }
 }
