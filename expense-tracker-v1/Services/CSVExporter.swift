@@ -28,7 +28,7 @@ class CSVExporter: ObservableObject {
     /// like `GoogleDriveService` can build upload payloads without creating
     /// temporary files.
     func generateCSVContent(from receipts: [Receipt]) -> String {
-        var csvContent = "Store Name,Date,Item Name,Quantity,Unit Price,Total Price,Receipt Total\n"
+        var csvContent = "Store Name,Servant,Date,Item Name,Quantity,Unit Price,Total Price,Receipt Total\n"
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -38,11 +38,11 @@ class CSVExporter: ObservableObject {
             
             if receipt.lineItems.isEmpty {
                 // If no items, add a single row with receipt info
-                csvContent += "\"\(receipt.storeName)\",\"\(dateString)\",\"\",\"\",\"\",\"\",\"\(receipt.totalAmount)\"\n"
+                csvContent += "\"\(receipt.storeName)\",\"\(receipt.servantName ?? "")\",\"\(dateString)\",\"\",\"\",\"\",\"\",\"\(receipt.totalAmount)\"\n"
             } else {
                 for (index, item) in receipt.lineItems.enumerated() {
                     let receiptTotal = index == 0 ? "\(receipt.totalAmount)" : ""
-                    csvContent += "\"\(receipt.storeName)\",\"\(dateString)\",\"\(item.name)\",\"\(item.quantity)\",\"\(item.unitPrice)\",\"\(item.totalPrice)\",\"\(receiptTotal)\"\n"
+                    csvContent += "\"\(receipt.storeName)\",\"\(receipt.servantName ?? "")\",\"\(dateString)\",\"\(item.name)\",\"\(item.quantity)\",\"\(item.unitPrice)\",\"\(item.totalPrice)\",\"\(receiptTotal)\"\n"
                 }
             }
         }

@@ -8,6 +8,7 @@ ReceiptWise is a lightweight iOS application for digitizing and organizing purch
 - **Detailed Parsing** – Extracts store names, dates, itemized purchases, totals and taxes.
 - **Google Drive Sync** – Sign in with your Google account and back up receipts as CSV files.
 - **CSV Export** – Export individual or all receipts as CSV for reporting or spreadsheet analysis.
+- **ChatGPT Parsing** – Optionally send recognized text to OpenAI's ChatGPT API for more accurate extraction of store, servant, date and totals.
 - **SwiftUI Interface** – Modern, user‑friendly design with an onboarding flow and settings screen.
 
 ## Getting Started
@@ -17,6 +18,7 @@ ReceiptWise is a lightweight iOS application for digitizing and organizing purch
 3. Build and run on an iOS device or simulator running iOS 17 or later.
 
 To enable Google Drive sync you will need to add your OAuth Client ID in `GoogleDriveService.swift`.
+To use ChatGPT-based parsing set an `OPENAI_API_KEY` environment variable before running the app.
 
 ## Contributing
 

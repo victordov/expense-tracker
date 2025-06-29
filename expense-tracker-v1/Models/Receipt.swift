@@ -20,6 +20,7 @@ struct Receipt: Identifiable, Codable {
     var totalAmount: Double
     var clientId: UUID?
     var clientName: String?
+    var servantName: String?
     var language: ReceiptLanguage
     var rawText: [String] // Store original OCR text for debugging
     var currency: String
@@ -33,6 +34,7 @@ struct Receipt: Identifiable, Codable {
          totalAmount: Double = 0.0,
          clientId: UUID? = nil,
          clientName: String? = nil,
+         servantName: String? = nil,
          language: ReceiptLanguage = .english,
          rawText: [String] = [],
          currency: String = "USD",
@@ -45,6 +47,7 @@ struct Receipt: Identifiable, Codable {
         self.totalAmount = totalAmount
         self.clientId = clientId
         self.clientName = clientName
+        self.servantName = servantName
         self.language = language
         self.rawText = rawText
         self.currency = currency

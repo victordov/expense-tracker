@@ -5,6 +5,7 @@ struct ReceiptDetailView: View {
     @State private var isEditing = false
     @State private var editedStoreName: String = ""
     @State private var editedDate: Date = Date()
+    @State private var editedServantName: String = ""
     @State private var editedLineItems: [LineItem] = []
     @StateObject private var coreDataManager = CoreDataManager.shared
     @Environment(\.presentationMode) var presentationMode
@@ -26,6 +27,14 @@ struct ReceiptDetailView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                         DatePicker("Date", selection: $editedDate, displayedComponents: .date)
+                    }
+
+                    VStack(alignment: .leading) {
+                        Text("Servant Name")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Servant", text: $editedServantName)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
                 } else {
                     HStack {
@@ -49,6 +58,15 @@ struct ReceiptDetailView: View {
                             Text(clientName)
                                 .foregroundColor(.blue)
                                 .fontWeight(.medium)
+                        }
+                    }
+
+                    if let servantName = receipt.servantName {
+                        HStack {
+                            Text("Servant:")
+                            Spacer()
+                            Text(servantName)
+                                .foregroundColor(.secondary)
                         }
                     }
                     
@@ -151,6 +169,7 @@ struct ReceiptDetailView: View {
     private func setupEditingData() {
         editedStoreName = receipt.storeName
         editedDate = receipt.date
+        editedServantName = receipt.servantName ?? ""
         editedLineItems = receipt.lineItems
     }
     
@@ -168,6 +187,7 @@ struct ReceiptDetailView: View {
             totalAmount: editedLineItems.reduce(0) { $0 + ($1.unitPrice * Double($1.quantity)) },
             clientId: receipt.clientId,
             clientName: receipt.clientName,
+            servantName: editedServantName,
             language: receipt.language,
             rawText: receipt.rawText,
             currency: receipt.currency,
@@ -278,6 +298,7 @@ struct ItemDetailRow: View {
                 ],
                 totalAmount: 8.48,
                 clientName: "John Doe",
+                servantName: "Alice",
                 language: .english,
                 currency: "USD"
             )

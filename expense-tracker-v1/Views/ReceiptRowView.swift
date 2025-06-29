@@ -22,6 +22,12 @@ struct ReceiptRowView: View {
                         .foregroundColor(.blue)
                         .fontWeight(.medium)
                 }
+
+                if let servantName = receipt.servantName {
+                    Text("Servant: \(servantName)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
                 
                 HStack {
                     Text(receipt.date, style: .date)
@@ -74,6 +80,7 @@ struct ReceiptRowView: View {
                 ],
                 totalAmount: 11.98,
                 clientName: "John Doe",
+                servantName: "Alice",
                 language: .romanian,
                 currency: "RON"
             ),
@@ -88,6 +95,7 @@ struct ReceiptRowView: View {
                     LineItem(name: "Item 2", quantity: 1, unitPrice: 3.49)
                 ],
                 totalAmount: 3.49,
+                servantName: "Bob",
                 language: .english
             ),
             showClient: false

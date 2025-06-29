@@ -20,7 +20,11 @@ class OCRService: ObservableObject {
     private init() {}
 
     /// Main entry point for processing an image.
-    func processReceiptImage(_ image: UIImage, expectedLanguage: ReceiptLanguage = .english) async -> Receipt {
+    /// - Parameters:
+    ///   - image: receipt photo
+    ///   - expectedLanguage: hint for OCR
+    ///   - useChatGPT: if true, parse using the OpenAI API
+    func processReceiptImage(_ image: UIImage, expectedLanguage: ReceiptLanguage = .english, useChatGPT: Bool = false) async -> Receipt {
         guard let cgImage = image.cgImage else {
             print("Error: Could not create CGImage.")
             return Receipt()
@@ -28,6 +32,9 @@ class OCRService: ObservableObject {
 
         do {
             let lines = try await recognizeText(in: cgImage, expectedLanguage: expectedLanguage)
+            if useChatGPT, let gptReceipt = try? await parseWithChatGPT(lines) {
+                return gptReceipt
+            }
             return parseReceiptText(lines, expectedLanguage: expectedLanguage)
         } catch {
             print("An error occurred during OCR processing: \(error.localizedDescription)")
@@ -241,5 +248,64 @@ class OCRService: ObservableObject {
     private func extractPriceFromString(_ string: String) -> Double? {
         guard let match = string.matches(of: #/([\d,.]+)\s*(?:[A-Za-z]{2,3})?\s*$/#).last else { return nil }
         return parsePriceString(String(match.output.1))
+    }
+
+    // MARK: - ChatGPT Parsing
+
+    private func parseWithChatGPT(_ lines: [String]) async throws -> Receipt? {
+        guard let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] else {
+            return nil
+        }
+
+        let prompt = """
+        You are an OCR post-processor. Extract the store name, servant name, date, all line items with quantity and unit price, and the total amount from the following receipt text. Respond only in JSON with fields storeName, servantName, date (yyyy-MM-dd), items (name, quantity, unitPrice), totalAmount.
+
+        Receipt text:
+        \(lines.joined(separator: "\n"))
+        """
+
+        struct ChatMessage: Codable { let role: String; let content: String }
+        struct ChatRequest: Codable { let model: String; let messages: [ChatMessage] }
+        struct ChatChoice: Codable { let message: ChatMessage }
+        struct ChatResponse: Codable { let choices: [ChatChoice] }
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = ChatRequest(model: "gpt-3.5-turbo", messages: [
+            .init(role: "system", content: "You output JSON only."),
+            .init(role: "user", content: prompt)
+        ])
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(ChatResponse.self, from: data)
+        guard let message = response.choices.first?.message.content,
+              let jsonData = message.data(using: .utf8) else { return nil }
+
+        struct GPTLineItem: Codable { var name: String; var quantity: Int; var unitPrice: Double }
+        struct GPTReturn: Codable { var storeName: String?; var servantName: String?; var date: String?; var items: [GPTLineItem]; var totalAmount: Double? }
+
+        let decoded = try JSONDecoder().decode(GPTReturn.self, from: jsonData)
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
+        let parsedDate = decoded.date.flatMap { formatter.date(from: $0) }
+        let items = decoded.items.map { LineItem(name: $0.name, quantity: $0.quantity, unitPrice: $0.unitPrice, isSelected: true) }
+
+        return Receipt(
+            storeName: decoded.storeName ?? "",
+            date: parsedDate ?? Date(),
+            lineItems: items,
+            totalAmount: decoded.totalAmount ?? 0,
+            clientId: nil,
+            clientName: nil,
+            servantName: decoded.servantName,
+            language: .english,
+            rawText: lines,
+            currency: detectCurrency(from: lines),
+            taxAmount: nil
+        )
     }
 }

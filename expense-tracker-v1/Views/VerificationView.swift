@@ -22,7 +22,16 @@ struct VerificationView: View {
                         TextField("Enter store name", text: $receipt.storeName)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
-                    
+
+                    HStack {
+                        Text("Servant:")
+                        TextField("Enter servant name", text: Binding(
+                            get: { receipt.servantName ?? "" },
+                            set: { receipt.servantName = $0 }
+                        ))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+
                     DatePicker("Date:", selection: $receipt.date, displayedComponents: .date)
                 }
                 
@@ -146,6 +155,7 @@ struct LineItemRow: View {
                 LineItem(name: "Bread", quantity: 1, unitPrice: 2.99)
             ],
             totalAmount: 5.99,
+            servantName: "Alice",
             language: .english,
             currency: "USD"
         )
