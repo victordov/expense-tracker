@@ -114,25 +114,25 @@ class OCRService: ObservableObject {
     /// Attempts to parse each receipt line into a `LineItem`, supporting multi-line names.
     private func extractLineItems(from lines: [String], totalAmount: Double?) -> [LineItem] {
         var items: [LineItem] = []
-        var pendingNameParts: [String] = []
+        var pendingParts: [String] = []
 
-        let headers = ["denumire", "cant", "suma", "descriere", "description"]
-        let skips = ["client", "total", "tax", "tva", "subtotal", "bon fiscal", "multumim"]
+        let headerKeywords = ["denumire", "cant", "suma", "descriere", "description"]
+        let skipKeywords = ["client", "total", "tax", "tva", "subtotal", "bon fiscal", "multumim"]
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
-            if headers.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
-            if skips.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
+            if headerKeywords.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
+            if skipKeywords.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
 
             if let (name, quantity, price) = parseItemLine(trimmed) {
                 if let total = totalAmount, abs(price - total) < 0.01 { continue }
-                let fullName = (pendingNameParts + [name]).joined(separator: " ")
+                let fullName = (pendingParts + [name]).joined(separator: " ")
                 let item = LineItem(name: fullName, quantity: quantity, unitPrice: price / Double(quantity), isSelected: true)
                 items.append(item)
-                pendingNameParts.removeAll()
+                pendingParts.removeAll()
             } else if extractPriceFromString(trimmed) == nil {
-                pendingNameParts.append(trimmed)
+                pendingParts.append(trimmed)
             }
         }
 
@@ -143,19 +143,23 @@ class OCRService: ObservableObject {
     private func parseItemLine(_ line: String) -> (name: String, quantity: Int, price: Double)? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if let match = trimmed.firstMatch(of: #/^\s*(\d+)\s*(?:x|X)?\s*(.*?)\s+([\d,.]+)\s*$/#) {
+        // Patterns attempt to locate quantity, name and price in common configurations.
+        // 1. "2 x Apples 9.99" or "2 Apples 9,99 RON"
+        if let match = trimmed.firstMatch(of: #/^\s*(\d+)\s*(?:x|X)?\s*(.*?)\s+(\d+[.,]\d+)\s*(?:[A-Za-z]{2,3})?\s*$/#) {
             let qty = Int(match.1) ?? 1
             let name = String(match.2)
             if let price = parsePriceString(String(match.3)) { return (name, qty, price) }
         }
 
-        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+(\d+)\s*(?:x|X)\s*([\d,.]+)\s*$/#) {
+        // 2. "Apples 2 x 9.99" or "Apples 2x9,99"
+        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+(\d+)\s*(?:x|X)\s*(\d+[.,]\d+)\s*(?:[A-Za-z]{2,3})?\s*$/#) {
             let name = String(match.1)
             let qty = Int(match.2) ?? 1
             if let price = parsePriceString(String(match.3)) { return (name, qty, price) }
         }
 
-        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+([\d,.]+)\s*$/#) {
+        // 3. "Apples 9.99" - assume quantity 1
+        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+(\d+[.,]\d+)\s*(?:[A-Za-z]{2,3})?\s*$/#) {
             let name = String(match.1)
             if let price = parsePriceString(String(match.2)) { return (name, 1, price) }
         }
@@ -240,13 +244,19 @@ class OCRService: ObservableObject {
     }
 
     private func parsePriceString(_ priceStr: String) -> Double? {
-        let cleaned = priceStr.replacingOccurrences(of: "[^0-9,.-]", with: "", options: .regularExpression)
-        let normalized = cleaned.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
-        return Double(normalized)
+        var cleaned = priceStr.replacingOccurrences(of: "[^0-9.,-]", with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: ",", with: ".")
+        if cleaned.filter({ $0 == "." }).count > 1, let lastDot = cleaned.lastIndex(of: ".") {
+            let before = cleaned[..<lastDot].replacingOccurrences(of: ".", with: "")
+            let after = cleaned[lastDot...]
+            cleaned = before + after
+        }
+        return Double(cleaned)
     }
 
     private func extractPriceFromString(_ string: String) -> Double? {
-        guard let match = string.matches(of: #/([\d,.]+)\s*(?:[A-Za-z]{2,3})?\s*$/#).last else { return nil }
+        // Grab the last number in the line which usually represents the price
+        guard let match = string.matches(of: #/([0-9]+(?:[.,][0-9]{1,2})?)(?!.*[0-9])/#).last else { return nil }
         return parsePriceString(String(match.output.1))
     }
 

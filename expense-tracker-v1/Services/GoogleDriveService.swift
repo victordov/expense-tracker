@@ -1,6 +1,8 @@
 import Foundation
+#if canImport(GoogleSignIn) && canImport(GoogleAPIClientForREST)
 import GoogleSignIn
 import GoogleAPIClientForREST
+import SwiftUI
 
 class GoogleDriveService: ObservableObject {
     static let shared = GoogleDriveService()
@@ -11,11 +13,10 @@ class GoogleDriveService: ObservableObject {
     private let driveService = GTLRDriveService()
     // Replace with your actual OAuth client ID
     private let clientID = "YOUR_CLIENT_ID_HERE"
-    
+
     private init() {}
-    
+
     // MARK: - Authentication
-    
     func authenticate() {
         guard let rootScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootVC = rootScene.windows.first?.rootViewController else {
@@ -38,16 +39,15 @@ class GoogleDriveService: ObservableObject {
             self.driveService.authorizer = user.fetcherAuthorizer
         }
     }
-    
+
     func signOut() {
         GIDSignIn.sharedInstance.signOut()
         isAuthenticated = false
         userEmail = nil
         driveService.authorizer = nil
     }
-    
+
     // MARK: - Receipt Sync
-    
     func syncReceipt(_ receipt: Receipt) {
         guard isAuthenticated else {
             print("User not authenticated with Google Drive")
@@ -60,7 +60,7 @@ class GoogleDriveService: ObservableObject {
                    fileName: "Receipt_\(Int(Date().timeIntervalSince1970)).csv",
                    mimeType: "text/csv")
     }
-    
+
     func syncAllReceipts(_ receipts: [Receipt]) {
         guard isAuthenticated else {
             print("User not authenticated with Google Drive")
@@ -73,9 +73,8 @@ class GoogleDriveService: ObservableObject {
                    fileName: "ReceiptWise_Expenses.csv",
                    mimeType: "text/csv")
     }
-    
+
     // MARK: - File Management
-    
     private func uploadFile(data: Data, fileName: String, mimeType: String) {
         let file = GTLRDrive_File()
         file.name = fileName
@@ -92,15 +91,14 @@ class GoogleDriveService: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - Error Handling
-    
     enum GoogleDriveError: Error {
         case notAuthenticated
         case networkError
         case fileNotFound
         case uploadFailed
-        
+
         var localizedDescription: String {
             switch self {
             case .notAuthenticated:
@@ -117,32 +115,29 @@ class GoogleDriveService: ObservableObject {
 }
 
 // MARK: - Settings View (for Google Drive integration)
-
-import SwiftUI
-
 struct GoogleDriveSettingsView: View {
     @StateObject private var googleDriveService = GoogleDriveService.shared
-    
+
     var body: some View {
         Section(header: Text("Google Drive Sync")) {
             if googleDriveService.isAuthenticated {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                    
+
                     VStack(alignment: .leading) {
                         Text("Connected")
                             .font(.headline)
-                        
+
                         if let email = googleDriveService.userEmail {
                             Text(email)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     Button("Sign Out") {
                         googleDriveService.signOut()
                     }
@@ -152,22 +147,48 @@ struct GoogleDriveSettingsView: View {
                 HStack {
                     Image(systemName: "xmark.circle")
                         .foregroundColor(.red)
-                    
+
                     Text("Not Connected")
                         .font(.headline)
-                    
+
                     Spacer()
-                    
+
                     Button("Connect") {
                         googleDriveService.authenticate()
                     }
                     .foregroundColor(.blue)
                 }
             }
-            
+
             Text("Automatically sync your receipts to Google Drive for backup and easy access from other devices.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
     }
 }
+
+#else
+
+import SwiftUI
+
+class GoogleDriveService: ObservableObject {
+    static let shared = GoogleDriveService()
+    @Published var isAuthenticated = false
+    @Published var userEmail: String?
+
+    func authenticate() {
+        print("Google Drive integration not available in this build")
+    }
+
+    func signOut() {}
+    func syncReceipt(_ receipt: Receipt) {}
+    func syncAllReceipts(_ receipts: [Receipt]) {}
+}
+
+struct GoogleDriveSettingsView: View {
+    var body: some View {
+        Text("Google Drive integration unavailable")
+    }
+}
+
+#endif

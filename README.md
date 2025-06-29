@@ -6,6 +6,7 @@ ReceiptWise is a lightweight iOS application for digitizing and organizing purch
 
 - **Smart OCR** – Uses Apple's Vision framework to recognize text on receipts with support for English and Romanian.
 - **Detailed Parsing** – Extracts store names, dates, itemized purchases, totals and taxes.
+- **Improved Heuristics** – Smarter line‑item detection handles multi-line names and various price formats.
 - **Google Drive Sync** – Sign in with your Google account and back up receipts as CSV files.
 - **CSV Export** – Export individual or all receipts as CSV for reporting or spreadsheet analysis.
 - **ChatGPT Parsing** – Optionally send recognized text to OpenAI's ChatGPT API for more accurate extraction of store, servant, date and totals.
