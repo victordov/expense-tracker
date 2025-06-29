@@ -1,55 +1,46 @@
-//
-//  ContentView.swift
-//  expense-tracker-v1
-//
-//  Created by Victor Dovgaliuc on 28/6/25.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @State private var selectedTab = 0
+    @State private var showingOnboarding = false
+    @AppStorage("hasShownOnboarding") private var hasShownOnboarding = false
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        TabView(selection: $selectedTab) {
+            // Camera Tab - Main scanning functionality
+            CameraView()
+                .tabItem {
+                    Image(systemName: "camera.fill")
+                    Text("Scan")
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+                .tag(0)
+            
+            // History Tab - View all receipts
+            HistoryView()
+                .tabItem {
+                    Image(systemName: "list.bullet")
+                    Text("History")
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                .tag(1)
+            
+            // Settings Tab
+            SettingsView()
+                .tabItem {
+                    Image(systemName: "gear")
+                    Text("Settings")
                 }
-            }
-        } detail: {
-            Text("Select an item")
+                .tag(2)
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+        .accentColor(.blue)
+        .onAppear {
+            if !hasShownOnboarding {
+                showingOnboarding = true
+            }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        .sheet(isPresented: $showingOnboarding) {
+            OnboardingView {
+                hasShownOnboarding = true
+                showingOnboarding = false
             }
         }
     }
@@ -57,5 +48,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .environment(\.managedObjectContext, CoreDataManager.shared.container.viewContext)
 }
