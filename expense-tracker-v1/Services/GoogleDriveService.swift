@@ -1,38 +1,49 @@
 import Foundation
+import GoogleSignIn
+import GoogleAPIClientForREST
 
 class GoogleDriveService: ObservableObject {
     static let shared = GoogleDriveService()
-    
+
     @Published var isAuthenticated = false
     @Published var userEmail: String?
+
+    private let driveService = GTLRDriveService()
+    // Replace with your actual OAuth client ID
+    private let clientID = "YOUR_CLIENT_ID_HERE"
     
     private init() {}
     
     // MARK: - Authentication
     
     func authenticate() {
-        // TODO: Implement Google Drive authentication
-        // This would typically use Google Sign-In SDK
-        // For now, this is a placeholder implementation
-        
-        // In a real implementation, you would:
-        // 1. Add Google Sign-In SDK to your project
-        // 2. Configure OAuth 2.0 credentials
-        // 3. Present Google Sign-In flow
-        // 4. Handle authentication result
-        
-        print("Google Drive authentication would be implemented here")
-        
-        // Simulated authentication for development
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        guard let rootScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = rootScene.windows.first?.rootViewController else {
+            print("Unable to obtain root view controller for Google Sign-In")
+            return
+        }
+
+        let configuration = GIDConfiguration(clientID: clientID)
+        GIDSignIn.sharedInstance.configuration = configuration
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { signInResult, error in
+            if let error = error {
+                print("Google Drive authentication failed: \(error.localizedDescription)")
+                return
+            }
+            guard let user = signInResult?.user else { return }
+
             self.isAuthenticated = true
-            self.userEmail = "user@example.com"
+            self.userEmail = user.profile?.email
+            self.driveService.authorizer = user.fetcherAuthorizer
         }
     }
     
     func signOut() {
+        GIDSignIn.sharedInstance.signOut()
         isAuthenticated = false
         userEmail = nil
+        driveService.authorizer = nil
     }
     
     // MARK: - Receipt Sync
@@ -42,28 +53,12 @@ class GoogleDriveService: ObservableObject {
             print("User not authenticated with Google Drive")
             return
         }
-        
-        // TODO: Implement Google Drive sync
-        // This would upload/update the master CSV file in Google Drive
-        
-        // In a real implementation, you would:
-        // 1. Generate CSV content for the receipt
-        // 2. Check if master CSV file exists in Google Drive
-        // 3. Download existing file if it exists
-        // 4. Append new receipt data
-        // 5. Upload updated file to Google Drive
-        
-        print("Syncing receipt to Google Drive: \(receipt.storeName)")
-        
-        // Simulated sync operation
-        DispatchQueue.global(qos: .background).async {
-            // Simulate network delay
-            Thread.sleep(forTimeInterval: 2.0)
-            
-            DispatchQueue.main.async {
-                print("Receipt synced to Google Drive successfully")
-            }
-        }
+
+        let csvData = CSVExporter.shared.generateCSVContent(from: [receipt]).data(using: .utf8) ?? Data()
+
+        uploadFile(data: csvData,
+                   fileName: "Receipt_\(Int(Date().timeIntervalSince1970)).csv",
+                   mimeType: "text/csv")
     }
     
     func syncAllReceipts(_ receipts: [Receipt]) {
@@ -71,39 +66,31 @@ class GoogleDriveService: ObservableObject {
             print("User not authenticated with Google Drive")
             return
         }
-        
-        // TODO: Implement bulk sync to Google Drive
-        // This would create/update the complete master CSV file
-        
-        print("Syncing \(receipts.count) receipts to Google Drive")
-        
-        // Generate CSV content
-        _ = CSVExporter.shared.generateSummaryCSV(from: receipts)
-        
-        // In a real implementation, you would upload this to Google Drive
-        print("CSV content generated for Google Drive sync")
-        
-        // Simulated sync operation
-        DispatchQueue.global(qos: .background).async {
-            // Simulate network delay
-            Thread.sleep(forTimeInterval: 3.0)
-            
-            DispatchQueue.main.async {
-                print("All receipts synced to Google Drive successfully")
-            }
-        }
+
+        let csvData = CSVExporter.shared.generateCSVContent(from: receipts).data(using: .utf8) ?? Data()
+
+        uploadFile(data: csvData,
+                   fileName: "ReceiptWise_Expenses.csv",
+                   mimeType: "text/csv")
     }
     
     // MARK: - File Management
     
-    private func createMasterCSVFile() {
-        // TODO: Create the master ReceiptWise_Expenses.csv file in Google Drive
-        print("Creating master CSV file in Google Drive")
-    }
-    
-    private func updateMasterCSVFile(with receipt: Receipt) {
-        // TODO: Update the existing master CSV file with new receipt data
-        print("Updating master CSV file with new receipt")
+    private func uploadFile(data: Data, fileName: String, mimeType: String) {
+        let file = GTLRDrive_File()
+        file.name = fileName
+
+        let uploadParams = GTLRUploadParameters(data: data, mimeType: mimeType)
+        let query = GTLRDriveQuery_FilesCreate.query(withObject: file,
+                                                    uploadParameters: uploadParams)
+
+        driveService.executeQuery(query) { _, _, error in
+            if let error = error {
+                print("Failed to upload file to Google Drive: \(error.localizedDescription)")
+            } else {
+                print("File uploaded to Google Drive successfully")
+            }
+        }
     }
     
     // MARK: - Error Handling

@@ -24,7 +24,10 @@ class CSVExporter: ObservableObject {
         }
     }
     
-    private func generateCSVContent(from receipts: [Receipt]) -> String {
+    /// Returns CSV text for an array of receipts. Exposed so other services
+    /// like `GoogleDriveService` can build upload payloads without creating
+    /// temporary files.
+    func generateCSVContent(from receipts: [Receipt]) -> String {
         var csvContent = "Store Name,Date,Item Name,Quantity,Unit Price,Total Price,Receipt Total\n"
         
         let dateFormatter = DateFormatter()
