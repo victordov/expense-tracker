@@ -104,41 +104,56 @@ class OCRService: ObservableObject {
         }?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Regex-based line item extraction. Calculates unit price from quantity and total.
+    /// Attempts to parse each receipt line into a `LineItem`, supporting multi-line names.
     private func extractLineItems(from lines: [String], totalAmount: Double?) -> [LineItem] {
         var items: [LineItem] = []
-        var foundItemsSection = false
+        var pendingNameParts: [String] = []
+
+        let headers = ["denumire", "cant", "suma", "descriere", "description"]
+        let skips = ["client", "total", "tax", "tva", "subtotal", "bon fiscal", "multumim"]
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            if headers.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
+            if skips.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) { continue }
 
-            let itemSectionHeaders = ["denumire", "cant", "suma", "descriere", "description"]
-            if itemSectionHeaders.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) {
-                foundItemsSection = true
-                continue
-            }
-
-            let genericSkips = ["client", "total", "tax", "tva", "subtotal", "bon fiscal", "multumim"]
-            if genericSkips.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) {
-                continue
-            }
-
-            let pattern = #/^\s*(\d+)?\s*(.*?)\s+([\d,.]+)\s*$/#
-            if let match = trimmed.firstMatch(of: pattern) {
-                let qtyStr = match.1.map(String.init)
-                let name = String(match.2).trimmingCharacters(in: .whitespaces)
-                let priceStr = String(match.3)
-                let quantity = Int(qtyStr ?? "1") ?? 1
-
-                if let linePrice = parsePriceString(priceStr), let parsedName = cleanItemName(name) {
-                    if let total = totalAmount, abs(linePrice - total) < 0.01 { continue }
-                    let unitPrice = linePrice / Double(quantity)
-                    let item = LineItem(name: parsedName, quantity: quantity, unitPrice: unitPrice, isSelected: true)
-                    items.append(item)
-                }
+            if let (name, quantity, price) = parseItemLine(trimmed) {
+                if let total = totalAmount, abs(price - total) < 0.01 { continue }
+                let fullName = (pendingNameParts + [name]).joined(separator: " ")
+                let item = LineItem(name: fullName, quantity: quantity, unitPrice: price / Double(quantity), isSelected: true)
+                items.append(item)
+                pendingNameParts.removeAll()
+            } else if extractPriceFromString(trimmed) == nil {
+                pendingNameParts.append(trimmed)
             }
         }
+
         return items
+    }
+
+    /// Parses a single line of text into item components if possible.
+    private func parseItemLine(_ line: String) -> (name: String, quantity: Int, price: Double)? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let match = trimmed.firstMatch(of: #/^\s*(\d+)\s*(?:x|X)?\s*(.*?)\s+([\d,.]+)\s*$/#) {
+            let qty = Int(match.1) ?? 1
+            let name = String(match.2)
+            if let price = parsePriceString(String(match.3)) { return (name, qty, price) }
+        }
+
+        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+(\d+)\s*(?:x|X)\s*([\d,.]+)\s*$/#) {
+            let name = String(match.1)
+            let qty = Int(match.2) ?? 1
+            if let price = parsePriceString(String(match.3)) { return (name, qty, price) }
+        }
+
+        if let match = trimmed.firstMatch(of: #/^\s*(.*?)\s+([\d,.]+)\s*$/#) {
+            let name = String(match.1)
+            if let price = parsePriceString(String(match.2)) { return (name, 1, price) }
+        }
+
+        return nil
     }
 
     /// Remove extraneous characters from an item name.
@@ -218,12 +233,13 @@ class OCRService: ObservableObject {
     }
 
     private func parsePriceString(_ priceStr: String) -> Double? {
-        let normalized = priceStr.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
+        let cleaned = priceStr.replacingOccurrences(of: "[^0-9,.-]", with: "", options: .regularExpression)
+        let normalized = cleaned.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
         return Double(normalized)
     }
 
     private func extractPriceFromString(_ string: String) -> Double? {
-        guard let match = string.matches(of: #/([\d,.]+)\s*$/#).last else { return nil }
+        guard let match = string.matches(of: #/([\d,.]+)\s*(?:[A-Za-z]{2,3})?\s*$/#).last else { return nil }
         return parsePriceString(String(match.output.1))
     }
 }
