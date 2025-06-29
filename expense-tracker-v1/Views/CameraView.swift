@@ -6,6 +6,8 @@ struct CameraView: UIViewControllerRepresentable {
     @State private var showingVerification = false
     @State private var scannedReceipt: Receipt?
     @State private var isProcessing = false
+    @State private var selectedLanguage: ReceiptLanguage = .english
+    @State private var showingLanguageSelection = false
     @Environment(\.presentationMode) var presentationMode
     
     func makeUIViewController(context: Context) -> CameraViewController {
@@ -31,7 +33,7 @@ struct CameraView: UIViewControllerRepresentable {
             parent.isProcessing = true
             
             Task {
-                let receipt = await OCRService.shared.processReceiptImage(image)
+                let receipt = await OCRService.shared.processReceiptImage(image, expectedLanguage: parent.selectedLanguage)
                 
                 await MainActor.run {
                     parent.scannedReceipt = receipt
@@ -55,9 +57,46 @@ struct CameraView: UIViewControllerRepresentable {
                     }
                     .foregroundColor(.white)
                     .padding()
+                    
                     Spacer()
+                    
+                    // Language selection button
+                    Button(action: {
+                        showingLanguageSelection = true
+                    }) {
+                        HStack {
+                            Image(systemName: "globe")
+                            Text(selectedLanguage.displayName)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.5))
+                        .foregroundColor(.white)
+                        .cornerRadius(20)
+                    }
+                    .padding()
                 }
                 Spacer()
+                
+                // Language indicator at bottom
+                HStack {
+                    Spacer()
+                    VStack {
+                        Text("Language: \(selectedLanguage.displayName)")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(15)
+                        
+                        Text("Tap globe icon to change")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, 100)
             }
             
             if isProcessing {
@@ -84,6 +123,9 @@ struct CameraView: UIViewControllerRepresentable {
                     presentationMode.wrappedValue.dismiss()
                 }
             }
+        }
+        .sheet(isPresented: $showingLanguageSelection) {
+            LanguageSelectionView(selectedLanguage: $selectedLanguage)
         }
     }
 }

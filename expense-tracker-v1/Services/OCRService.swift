@@ -6,7 +6,25 @@ class OCRService: ObservableObject {
     
     private init() {}
     
-    func processReceiptImage(_ image: UIImage) async -> Receipt {
+    // Romanian patterns for receipt parsing
+    private let romanianPatterns = [
+        "total": ["total", "suma", "valoare", "plata"],
+        "date": ["data", "dată", "date"],
+        "client": ["client", "către", "pentru", "nume client", "facturare"],
+        "quantity": ["cant", "cantitate", "buc", "bucăți", "pc", "pcs"],
+        "price": ["preț", "pret", "valoare", "cost"]
+    ]
+    
+    // English patterns for receipt parsing
+    private let englishPatterns = [
+        "total": ["total", "amount", "sum", "balance", "due"],
+        "date": ["date", "time"],
+        "client": ["client", "customer", "bill to", "to:", "for:"],
+        "quantity": ["qty", "quantity", "pcs", "pieces"],
+        "price": ["price", "amount", "cost"]
+    ]
+    
+    func processReceiptImage(_ image: UIImage, expectedLanguage: ReceiptLanguage = .english) async -> Receipt {
         guard let cgImage = image.cgImage else {
             return Receipt()
         }
@@ -19,12 +37,20 @@ class OCRService: ObservableObject {
                     return
                 }
                 
-                let receipt = self.parseReceiptFromVisionResults(request.results)
+                let receipt = self.parseReceiptFromVisionResults(request.results, expectedLanguage: expectedLanguage)
                 continuation.resume(returning: receipt)
             }
             
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
+            
+            // Set language for better OCR accuracy
+            switch expectedLanguage {
+            case .romanian:
+                request.recognitionLanguages = ["ro", "en"]
+            case .english:
+                request.recognitionLanguages = ["en"]
+            }
             
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             
@@ -37,7 +63,7 @@ class OCRService: ObservableObject {
         }
     }
     
-    private func parseReceiptFromVisionResults(_ results: [Any]?) -> Receipt {
+    private func parseReceiptFromVisionResults(_ results: [Any]?, expectedLanguage: ReceiptLanguage = .english) -> Receipt {
         guard let observations = results as? [VNRecognizedTextObservation] else {
             return Receipt()
         }
@@ -49,40 +75,167 @@ class OCRService: ObservableObject {
             allText.append(topCandidate.string)
         }
         
-        return parseReceiptText(allText)
+        return parseReceiptText(allText, expectedLanguage: expectedLanguage)
     }
     
-    private func parseReceiptText(_ textLines: [String]) -> Receipt {
+    private func parseReceiptText(_ textLines: [String], expectedLanguage: ReceiptLanguage = .english) -> Receipt {
         var storeName = ""
         var date = Date()
         var lineItems: [LineItem] = []
         var totalAmount = 0.0
+        var clientName: String?
+        var detectedLanguage = expectedLanguage
+        var currency = "USD"
+        var taxAmount: Double?
+        
+        // Auto-detect language based on common words
+        detectedLanguage = detectLanguage(from: textLines) ?? expectedLanguage
+        
+        // Detect currency
+        currency = detectCurrency(from: textLines)
         
         // Find store name (usually first non-empty line)
         if let firstLine = textLines.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
             storeName = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
+        // Find client name
+        clientName = extractClientName(from: textLines, language: detectedLanguage)
+        
         // Find date
-        date = extractDate(from: textLines) ?? Date()
+        date = extractDate(from: textLines, language: detectedLanguage) ?? Date()
         
         // Find total amount
-        totalAmount = extractTotal(from: textLines)
+        totalAmount = extractTotal(from: textLines, language: detectedLanguage)
+        
+        // Find tax amount
+        taxAmount = extractTax(from: textLines, language: detectedLanguage)
         
         // Extract line items
-        lineItems = extractLineItems(from: textLines)
+        lineItems = extractLineItems(from: textLines, language: detectedLanguage)
         
         return Receipt(
             storeName: storeName,
             date: date,
             lineItems: lineItems,
-            totalAmount: totalAmount
+            totalAmount: totalAmount,
+            clientName: clientName,
+            language: detectedLanguage,
+            rawText: textLines,
+            currency: currency,
+            taxAmount: taxAmount
         )
     }
     
-    private func extractDate(from lines: [String]) -> Date? {
+    private func detectLanguage(from lines: [String]) -> ReceiptLanguage? {
+        let romanianKeywords = ["lei", "ron", "tva", "factura", "chitanță", "către", "suma", "dată", "cantitate", "preț"]
+        let englishKeywords = ["total", "amount", "receipt", "date", "qty", "price", "customer"]
+        
+        var romanianCount = 0
+        var englishCount = 0
+        
+        for line in lines {
+            let lowercaseLine = line.lowercased()
+            
+            for keyword in romanianKeywords {
+                if lowercaseLine.contains(keyword) {
+                    romanianCount += 1
+                }
+            }
+            
+            for keyword in englishKeywords {
+                if lowercaseLine.contains(keyword) {
+                    englishCount += 1
+                }
+            }
+        }
+        
+        if romanianCount > englishCount {
+            return .romanian
+        } else if englishCount > romanianCount {
+            return .english
+        }
+        
+        return nil // Unable to determine
+    }
+    
+    private func detectCurrency(from lines: [String]) -> String {
+        let currencyPatterns = [
+            ("RON", ["ron", "lei"]),
+            ("EUR", ["eur", "euro", "€"]),
+            ("USD", ["usd", "dollar", "$"])
+        ]
+        
+        for line in lines {
+            let lowercaseLine = line.lowercased()
+            for (currency, patterns) in currencyPatterns {
+                for pattern in patterns {
+                    if lowercaseLine.contains(pattern) {
+                        return currency
+                    }
+                }
+            }
+        }
+        
+        return "USD" // Default
+    }
+    
+    private func extractClientName(from lines: [String], language: ReceiptLanguage) -> String? {
+        let patterns = language == .romanian ? romanianPatterns["client"]! : englishPatterns["client"]!
+        
+        for (index, line) in lines.enumerated() {
+            let lowercaseLine = line.lowercased()
+            
+            for pattern in patterns {
+                if lowercaseLine.contains(pattern) {
+                    // Look for client name in current line after the pattern
+                    let components = line.components(separatedBy: ":")
+                    if components.count > 1 {
+                        let clientName = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !clientName.isEmpty && clientName.count > 2 {
+                            return clientName
+                        }
+                    }
+                    
+                    // Look for client name in the next line
+                    if index + 1 < lines.count {
+                        let nextLine = lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !nextLine.isEmpty && nextLine.count > 2 && !containsPrice(nextLine) {
+                            return nextLine
+                        }
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    private func containsPrice(_ string: String) -> Bool {
+        return extractPriceFromString(string) != nil
+    }
+    
+    private func extractTax(from lines: [String], language: ReceiptLanguage) -> Double? {
+        let taxPatterns = language == .romanian ? ["tva", "taxă", "impozit"] : ["tax", "vat", "gst"]
+        
+        for line in lines {
+            let lowercaseLine = line.lowercased()
+            
+            for pattern in taxPatterns {
+                if lowercaseLine.contains(pattern) {
+                    if let amount = extractPriceFromString(line) {
+                        return amount
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    private func extractDate(from lines: [String], language: ReceiptLanguage = .english) -> Date? {
         let dateFormatter = DateFormatter()
-        let dateFormats = [
+        var dateFormats = [
             "MM/dd/yyyy",
             "M/d/yyyy",
             "MM-dd-yyyy",
@@ -90,6 +243,16 @@ class OCRService: ObservableObject {
             "dd/MM/yyyy",
             "MMM dd, yyyy"
         ]
+        
+        // Add Romanian date formats
+        if language == .romanian {
+            dateFormats.append(contentsOf: [
+                "dd.MM.yyyy",
+                "d.M.yyyy",
+                "dd-MM-yyyy",
+                "d-M-yyyy"
+            ])
+        }
         
         for line in lines {
             for format in dateFormats {
@@ -111,13 +274,9 @@ class OCRService: ObservableObject {
         return nil
     }
     
-    private func extractTotal(from lines: [String]) -> Double {
-        let totalPatterns = [
-            "total",
-            "amount",
-            "sum",
-            "balance"
-        ]
+    private func extractTotal(from lines: [String], language: ReceiptLanguage = .english) -> Double {
+        let totalPatterns = language == .romanian ? 
+            romanianPatterns["total"]! : englishPatterns["total"]!
         
         for line in lines.reversed() { // Start from bottom
             let lowercaseLine = line.lowercased()
@@ -142,7 +301,7 @@ class OCRService: ObservableObject {
         return maxPrice
     }
     
-    private func extractLineItems(from lines: [String]) -> [LineItem] {
+    private func extractLineItems(from lines: [String], language: ReceiptLanguage = .english) -> [LineItem] {
         var items: [LineItem] = []
         
         for line in lines {

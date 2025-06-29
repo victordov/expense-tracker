@@ -18,6 +18,27 @@ struct MainTabView: View {
                     Text("Scan")
                 }
                 .tag(1)
+            
+            ClientGroupedView()
+                .tabItem {
+                    Image(systemName: "person.3.fill")
+                    Text("Clients")
+                }
+                .tag(2)
+            
+            HistoryView()
+                .tabItem {
+                    Image(systemName: "clock.fill")
+                    Text("History")
+                }
+                .tag(3)
+            
+            SettingsView()
+                .tabItem {
+                    Image(systemName: "gear")
+                    Text("Settings")
+                }
+                .tag(4)
         }
     }
 }

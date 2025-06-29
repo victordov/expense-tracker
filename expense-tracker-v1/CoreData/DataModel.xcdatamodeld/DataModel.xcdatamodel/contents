@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22522" systemVersion="23C71" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="ClientEntity" representedClassName="ClientEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="address" optional="YES" attributeType="String"/>
+        <attribute name="createdDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="email" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="phone" optional="YES" attributeType="String"/>
+        <relationship name="receipts" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ReceiptEntity" inverseName="client" inverseEntity="ReceiptEntity"/>
+    </entity>
     <entity name="LineItemEntity" representedClassName="LineItemEntity" syncable="YES" codeGenerationType="class">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="name" optional="YES" attributeType="String"/>
@@ -8,10 +18,17 @@
         <relationship name="receipt" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ReceiptEntity" inverseName="lineItems" inverseEntity="ReceiptEntity"/>
     </entity>
     <entity name="ReceiptEntity" representedClassName="ReceiptEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="clientName" optional="YES" attributeType="String"/>
+        <attribute name="currency" optional="YES" attributeType="String" defaultValueString="USD"/>
         <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="language" optional="YES" attributeType="String" defaultValueString="en"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="rawText" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[String]"/>
         <attribute name="storeName" optional="YES" attributeType="String"/>
+        <attribute name="taxAmount" optional="YES" attributeType="Double" usesScalarValueType="NO"/>
         <attribute name="totalAmount" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <relationship name="client" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ClientEntity" inverseName="receipts" inverseEntity="ClientEntity"/>
         <relationship name="lineItems" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="LineItemEntity" inverseName="receipt" inverseEntity="LineItemEntity"/>
     </entity>
 </model>

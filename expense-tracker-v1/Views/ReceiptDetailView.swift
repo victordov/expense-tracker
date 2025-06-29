@@ -41,6 +41,44 @@ struct ReceiptDetailView: View {
                         Text(receipt.date, style: .date)
                             .foregroundColor(.secondary)
                     }
+                    
+                    if let clientName = receipt.clientName {
+                        HStack {
+                            Text("Client:")
+                            Spacer()
+                            Text(clientName)
+                                .foregroundColor(.blue)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Language:")
+                        Spacer()
+                        Text(receipt.language.displayName)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(receipt.language == .romanian ? Color.blue : Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                            .font(.caption)
+                    }
+                    
+                    HStack {
+                        Text("Currency:")
+                        Spacer()
+                        Text(receipt.currency)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if let taxAmount = receipt.taxAmount {
+                        HStack {
+                            Text("Tax:")
+                            Spacer()
+                            Text("$\(taxAmount, specifier: "%.2f")")
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
                 
                 HStack {
@@ -70,6 +108,27 @@ struct ReceiptDetailView: View {
                     ForEach(receipt.lineItems) { item in
                         ItemDetailRow(item: item)
                     }
+                }
+            }
+            
+            // Debug section for raw OCR text
+            if !receipt.rawText.isEmpty {
+                Section(header: Text("Raw OCR Text (Debug)")) {
+                    ForEach(receipt.rawText, id: \.self) { line in
+                        Text(line)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            
+            // Notes section
+            if let notes = receipt.notes, !notes.isEmpty {
+                Section(header: Text("Notes")) {
+                    Text(notes)
+                        .font(.body)
+                        .foregroundColor(.primary)
                 }
             }
         }
@@ -106,7 +165,14 @@ struct ReceiptDetailView: View {
             storeName: editedStoreName,
             date: editedDate,
             lineItems: editedLineItems,
-            totalAmount: editedLineItems.reduce(0) { $0 + ($1.unitPrice * Double($1.quantity)) }
+            totalAmount: editedLineItems.reduce(0) { $0 + ($1.unitPrice * Double($1.quantity)) },
+            clientId: receipt.clientId,
+            clientName: receipt.clientName,
+            language: receipt.language,
+            rawText: receipt.rawText,
+            currency: receipt.currency,
+            taxAmount: receipt.taxAmount,
+            notes: receipt.notes
         )
         
         coreDataManager.updateReceipt(updatedReceipt)
@@ -210,7 +276,10 @@ struct ItemDetailRow: View {
                     LineItem(name: "Whole Wheat Bread", quantity: 1, unitPrice: 2.99),
                     LineItem(name: "Milk 2%", quantity: 1, unitPrice: 3.49)
                 ],
-                totalAmount: 8.48
+                totalAmount: 8.48,
+                clientName: "John Doe",
+                language: .english,
+                currency: "USD"
             )
         )
     }

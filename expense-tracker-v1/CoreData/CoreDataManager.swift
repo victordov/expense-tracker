@@ -5,6 +5,7 @@ class CoreDataManager: ObservableObject {
     static let shared = CoreDataManager()
     
     @Published var receipts: [Receipt] = []
+    @Published var clients: [Client] = []
     
     lazy var container: NSPersistentContainer = {
         let container = NSPersistentContainer(name: "DataModel")
@@ -18,6 +19,7 @@ class CoreDataManager: ObservableObject {
     
     private init() {
         fetchReceipts()
+        fetchClients()
     }
     
     func save() {
@@ -27,6 +29,7 @@ class CoreDataManager: ObservableObject {
             do {
                 try context.save()
                 fetchReceipts() // Refresh the published receipts array
+                fetchClients() // Refresh the published clients array
             } catch {
                 print("Save error: \(error)")
             }
@@ -41,6 +44,18 @@ class CoreDataManager: ObservableObject {
         receiptEntity.storeName = receipt.storeName
         receiptEntity.date = receipt.date
         receiptEntity.totalAmount = receipt.calculatedTotal
+        receiptEntity.clientName = receipt.clientName
+        receiptEntity.language = receipt.language.rawValue
+        receiptEntity.currency = receipt.currency
+        receiptEntity.taxAmount = receipt.taxAmount != nil ? NSNumber(value: receipt.taxAmount!) : nil
+        receiptEntity.notes = receipt.notes
+        receiptEntity.rawText = receipt.rawText
+        
+        // Find or create client if clientName exists
+        if let clientName = receipt.clientName, !clientName.isEmpty {
+            let client = findOrCreateClient(named: clientName)
+            receiptEntity.client = client
+        }
         
         // Create line item entities
         for lineItem in receipt.selectedItems {
@@ -67,6 +82,20 @@ class CoreDataManager: ObservableObject {
                 receiptEntity.storeName = receipt.storeName
                 receiptEntity.date = receipt.date
                 receiptEntity.totalAmount = receipt.totalAmount
+                receiptEntity.clientName = receipt.clientName
+                receiptEntity.language = receipt.language.rawValue
+                receiptEntity.currency = receipt.currency
+                receiptEntity.taxAmount = receipt.taxAmount != nil ? NSNumber(value: receipt.taxAmount!) : nil
+                receiptEntity.notes = receipt.notes
+                receiptEntity.rawText = receipt.rawText
+                
+                // Update client association
+                if let clientName = receipt.clientName, !clientName.isEmpty {
+                    let client = findOrCreateClient(named: clientName)
+                    receiptEntity.client = client
+                } else {
+                    receiptEntity.client = nil
+                }
                 
                 // Delete existing line items
                 if let existingLineItems = receiptEntity.lineItems as? Set<LineItemEntity> {
@@ -142,12 +171,107 @@ class CoreDataManager: ObservableObject {
                     storeName: storeName,
                     date: date,
                     lineItems: lineItems,
-                    totalAmount: entity.totalAmount
+                    totalAmount: entity.totalAmount,
+                    clientId: entity.client?.id,
+                    clientName: entity.clientName,
+                    language: ReceiptLanguage(rawValue: entity.language ?? "en") ?? .english,
+                    rawText: entity.rawText ?? [],
+                    currency: entity.currency ?? "USD",
+                    taxAmount: entity.taxAmount?.doubleValue,
+                    notes: entity.notes
                 )
             }
         } catch {
             print("Fetch error: \(error)")
             self.receipts = []
+        }
+    }
+    
+    // MARK: - Client Management
+    
+    func saveClient(_ client: Client) {
+        let context = container.viewContext
+        let clientEntity = ClientEntity(context: context)
+        
+        clientEntity.id = client.id
+        clientEntity.name = client.name
+        clientEntity.email = client.email
+        clientEntity.phone = client.phone
+        clientEntity.address = client.address
+        clientEntity.createdDate = client.createdDate
+        clientEntity.isActive = client.isActive
+        
+        save()
+    }
+    
+    func findOrCreateClient(named name: String) -> ClientEntity {
+        let context = container.viewContext
+        let request: NSFetchRequest<ClientEntity> = ClientEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "name LIKE[c] %@", name)
+        
+        do {
+            let results = try context.fetch(request)
+            if let existingClient = results.first {
+                return existingClient
+            }
+        } catch {
+            print("Error finding client: \(error)")
+        }
+        
+        // Create new client
+        let clientEntity = ClientEntity(context: context)
+        clientEntity.id = UUID()
+        clientEntity.name = name
+        clientEntity.createdDate = Date()
+        clientEntity.isActive = true
+        
+        return clientEntity
+    }
+    
+    func fetchClients() {
+        let request: NSFetchRequest<ClientEntity> = ClientEntity.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \ClientEntity.name, ascending: true)]
+        
+        do {
+            let clientEntities = try container.viewContext.fetch(request)
+            self.clients = clientEntities.compactMap { entity in
+                guard let id = entity.id,
+                      let name = entity.name,
+                      let createdDate = entity.createdDate else { return nil }
+                
+                // Get associated receipts
+                let clientReceipts = receipts.filter { $0.clientId == id }
+                
+                return Client(
+                    id: id,
+                    name: name,
+                    email: entity.email,
+                    phone: entity.phone,
+                    address: entity.address,
+                    receipts: clientReceipts,
+                    createdDate: createdDate,
+                    isActive: entity.isActive
+                )
+            }
+        } catch {
+            print("Fetch clients error: \(error)")
+            self.clients = []
+        }
+    }
+    
+    func deleteClient(_ client: Client) {
+        let context = container.viewContext
+        let request: NSFetchRequest<ClientEntity> = ClientEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", client.id.uuidString)
+        
+        do {
+            let results = try context.fetch(request)
+            if let clientEntity = results.first {
+                context.delete(clientEntity)
+                save()
+            }
+        } catch {
+            print("Delete client error: \(error)")
         }
     }
 }

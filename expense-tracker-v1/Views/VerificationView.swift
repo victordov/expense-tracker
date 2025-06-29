@@ -144,7 +144,10 @@ struct LineItemRow: View {
             lineItems: [
                 LineItem(name: "Apple", quantity: 2, unitPrice: 1.50),
                 LineItem(name: "Bread", quantity: 1, unitPrice: 2.99)
-            ]
+            ],
+            totalAmount: 5.99,
+            language: .english,
+            currency: "USD"
         )
     ) {
         // onDismiss

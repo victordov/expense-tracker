@@ -132,35 +132,6 @@ struct DashboardView: View {
     }
 }
 
-struct ReceiptRowView: View {
-    let receipt: Receipt
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(receipt.storeName.isEmpty ? "Unknown Store" : receipt.storeName)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Text(receipt.date, style: .date)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Text("\(receipt.lineItems.count) items")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            Text("$\(receipt.totalAmount, specifier: "%.2f")")
-                .font(.title3)
-                .fontWeight(.semibold)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
 struct CustomDateRangeView: View {
     @Binding var startDate: Date
     @Binding var endDate: Date
